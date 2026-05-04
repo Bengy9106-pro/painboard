@@ -1,0 +1,115 @@
+import { NextRequest, NextResponse } from 'next/server'
+import Filter from 'bad-words-es'
+import crypto from 'crypto'
+
+const extraBlocked = [
+  'puta', 'puto', 'mierda', 'gonorrea', 'marica', 'hpta', 'verga', 'coño', 'polla',
+  'fuck', 'bitch', 'asshole', 'shit', 'nigger', 'cunt', 'faggot'
+]
+filter.addWords(...extraBlocked)
+
+const urlRegex = /(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|io|co|gg|xyz|me|tv|ly|ru|cn|info|biz|app|dev|ai|io|ly|gg|to|sh|fm|us|uk|es|mx|ar|cl|pe|ve|ec|pa|do|pt))(\/\S*)?/i
+
+function getClientIp(req: NextRequest) {
+  const xff = req.headers.get('x-forwarded-for')
+  const real = req.headers.get('x-real-ip')
+  return (xff?.split(',')[0] || real || 'unknown').trim()
+}
+
+function hashIp(ip: string) {
+  return crypto.createHash('sha256').update(ip).digest('hex')
+}
+
+function normalizeText(text: string) {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function hasProfanity(text: string) {
+  return filter.isProfane(text)
+}
+
+export async function POST(req: NextRequest) {
+  const ip = getClientIp(req)
+  const ipHash = hashIp(ip)
+
+  const body = await req.json()
+  const { title, description, category_id, country_code, lang } = body
+
+  // Validación básica
+  if (!title || title.length < 10 || title.length > 150) {
+    return NextResponse.json({ error: 'Título inválido (10-150 caracteres)' }, { status: 400 })
+  }
+
+  if (description && description.length > 1000) {
+    return NextResponse.json({ error: 'Descripción muy larga (máx 1000 caracteres)' }, { status: 400 })
+  }
+
+  const titleClean = normalizeText(title)
+  const descClean = normalizeText(description || '')
+
+  // Bloqueo de URLs
+  if (urlRegex.test(titleClean) || urlRegex.test(descClean)) {
+    return NextResponse.json({ error: 'Links no permitidos' }, { status: 400 })
+  }
+
+  // Filtro de groserías
+  const hasBadWords = hasProfanity(titleClean) || hasProfanity(descClean)
+  const flaggedTerms = hasBadWords ? filter.listClassified(titleClean + ' ' + descClean) : []
+
+  // Rate limit básico (mejora con Redis después)
+  const recentLogs = await supabase
+    .from('submission_logs')
+    .select('count')
+    .eq('ip_hash', ipHash)
+    .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+
+  if (recentLogs.data && recentLogs.data[0]?.count >= 3) {
+    return NextResponse.json({ error: 'Demasiados envíos desde esta IP' }, { status: 429 })
+  }
+
+  // Insertar como pending
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('pains')
+    .insert({
+      title: titleClean,
+      description: descClean,
+      category_id,
+      country_code,
+      lang: lang || 'es',
+      status: hasBadWords ? 'pending' : 'pending', // todo pending por ahora
+      moderation_reason: hasBadWords ? 'palabras_prohibidas' : null,
+      submitter_ip_hash: ipHash,
+      contains_link: false,
+      flagged_terms: flaggedTerms,
+    })
+    .select('id, title, slug')
+    .single()
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Log del intento
+  await supabase.from('submission_logs').insert({
+    ip_hash: ipHash,
+    action: 'submit_pain',
+    created_at: new Date().toISOString()
+  })
+
+  return NextResponse.json({ success: true, pain: data })
+}
+
+export async function GET(req: NextRequest) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('pains')
+    .select('*')
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json(data)
+}

@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Filter from 'bad-words-es'
 import crypto from 'crypto'
-import { createClient } from '@/src/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
+
 const filter = new Filter({ languages: ['es', 'en'] })
 
 const extraBlocked = [
-  'puta', 'puto', 'mierda', 'gonorrea', 'marica', 'hpta', 'verga', 'coño', 'polla',
-  'fuck', 'bitch', 'asshole', 'shit', 'nigger', 'cunt', 'faggot'
+  'puta', 'puto', 'mierda', 'gonorrea', 'marica', 'hpta', 'verga', 
+  'coño', 'polla', 'fuck', 'bitch', 'asshole', 'shit', 'nigger', 'cunt', 'faggot'
 ]
+
 filter.addWords(...extraBlocked)
 
-const urlRegex = /(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|io|co|gg|xyz|me|tv|ly|ru|cn|info|biz|app|dev|ai|io|ly|gg|to|sh|fm|us|uk|es|mx|ar|cl|pe|ve|ec|pa|do|pt))(\/\S*)?/i
+const urlRegex = /(https?:\/\/|www\.[a-z0-9-]+\.(com|net|org|io|co|gg|xyz|me|tv|ly|ru|cn|info|biz|app|dev|ai|to|sh|fm|us|uk|es|mx|ar|cl|pe|ve|ec|pa|do|pt))(\/\S*)?/i
 
 function getClientIp(req: NextRequest) {
   const xff = req.headers.get('x-forwarded-for')
@@ -26,92 +28,106 @@ function normalizeText(text: string) {
   return text.replace(/\s+/g, ' ').trim()
 }
 
+function slugify(text: string) {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+}
+
 function hasProfanity(text: string) {
   return filter.isProfane(text)
 }
 
 export async function POST(req: NextRequest) {
-  const ip = getClientIp(req)
-  const ipHash = hashIp(ip)
+  try {
+    const supabase = await createClient()
 
-  const body = await req.json()
-  const { title, description, category_id, country_code, lang } = body
+    const ip = getClientIp(req)
+    const ipHash = hashIp(ip)
 
-  // Validación básica
-  if (!title || title.length < 10 || title.length > 150) {
-    return NextResponse.json({ error: 'Título inválido (10-150 caracteres)' }, { status: 400 })
-  }
+    const body = await req.json()
+    const { title, description, category_id, country_code, lang } = body
 
-  if (description && description.length > 1000) {
-    return NextResponse.json({ error: 'Descripción muy larga (máx 1000 caracteres)' }, { status: 400 })
-  }
+    if (!title || title.length < 10 || title.length > 150) {
+      return NextResponse.json({ error: 'Título inválido (10-150 caracteres)' }, { status: 400 })
+    }
 
-  const titleClean = normalizeText(title)
-  const descClean = normalizeText(description || '')
+    const titleClean = normalizeText(title)
+    const descClean = normalizeText(description || '')
 
-  // Bloqueo de URLs
-  if (urlRegex.test(titleClean) || urlRegex.test(descClean)) {
-    return NextResponse.json({ error: 'Links no permitidos' }, { status: 400 })
-  }
+    if (urlRegex.test(titleClean) || urlRegex.test(descClean)) {
+      return NextResponse.json({ error: 'Links no permitidos' }, { status: 400 })
+    }
 
-  // Filtro de groserías
-  const hasBadWords = hasProfanity(titleClean) || hasProfanity(descClean)
-  const flaggedTerms = hasBadWords ? filter.listClassified(titleClean + ' ' + descClean) : []
+    const baseSlug = slugify(titleClean)
+    const uniqueSlug = `${baseSlug}-${Date.now()}`
 
-  // Rate limit básico (mejora con Redis después)
-  const recentLogs = await supabase
-    .from('submission_logs')
-    .select('count')
-    .eq('ip_hash', ipHash)
-    .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+    // Rate limit
+    const { data: recentLogs } = await supabase
+      .from('submission_logs')
+      .select('id')
+      .eq('ip_hash', ipHash)
+      .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+      .limit(3)
 
-  if (recentLogs.data && recentLogs.data[0]?.count >= 3) {
-    return NextResponse.json({ error: 'Demasiados envíos desde esta IP' }, { status: 429 })
-  }
+    if ((recentLogs?.length || 0) >= 3) {
+      return NextResponse.json({ error: 'Demasiados envíos desde esta IP' }, { status: 429 })
+    }
 
-  // Insertar como pending
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from('pains')
-    .insert({
-      title: titleClean,
-      description: descClean,
-      category_id,
-      country_code,
-      lang: lang || 'es',
-      status: hasBadWords ? 'pending' : 'pending', // todo pending por ahora
-      moderation_reason: hasBadWords ? 'palabras_prohibidas' : null,
-      submitter_ip_hash: ipHash,
-      contains_link: false,
-      flagged_terms: flaggedTerms,
+    // Insert pain
+    const { error: painError } = await supabase
+      .from('pains')
+      .insert({
+        slug: uniqueSlug,
+        title: titleClean,
+        description: descClean || null,
+        lang: lang || 'es',
+        category_id: category_id || null,
+        country_code: country_code || null,
+        status: 'pending',
+        contains_link: false,
+        abuse_reports_count: 0,
+        moderation_reason: null,
+        submitter_ip_hash: ipHash,
+        flagged_terms: []
+      })
+
+    if (painError) {
+      return NextResponse.json({ error: painError.message }, { status: 500 })
+    }
+
+    // Log submission
+    await supabase.from('submission_logs').insert({
+      ip_hash: ipHash,
+      action: 'submit_pain'
     })
-    .select('id, title, slug')
-    .single()
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true, slug: uniqueSlug }, { status: 201 })
+  } catch (error) {
+    console.error('POST /api/pains error:', error)
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
   }
-
-  // Log del intento
-  await supabase.from('submission_logs').insert({
-    ip_hash: ipHash,
-    action: 'submit_pain',
-    created_at: new Date().toISOString()
-  })
-
-  return NextResponse.json({ success: true, pain: data })
 }
 
-export async function GET(req: NextRequest) {
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from('pains')
-    .select('*')
-    .eq('status', 'active')
-    .order('created_at', { ascending: false })
-    .limit(50)
+export async function GET() {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('pains')
+      .select('*')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(50)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json(data)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('GET /api/pains error:', error)
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+  }
 }
