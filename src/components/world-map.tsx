@@ -1,9 +1,10 @@
 'use client'
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3-geo'
+// d3 used for projection and path only
 import { feature } from 'topojson-client'
 import type { Topology } from 'topojson-specification'
-import type { FeatureCollection, GeoJsonProperties } from 'geojson'
+import type { FeatureCollection, GeoJsonProperties, Geometry } from 'geojson'
 
 type Props = {
   stats: Record<string, { pains: number; votes: number }>
@@ -33,7 +34,7 @@ export default function WorldMap({ stats, lang }: Props) {
     fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
       .then(r => r.json())
       .then((world: Topology) => {
-        const countries = feature(world, world.objects.countries) as FeatureCollection<d3.GeoPermissibleObjects, GeoJsonProperties>
+        const countries = feature(world, world.objects.countries) as FeatureCollection<Geometry, GeoJsonProperties>
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
 
         while (svg.firstChild) svg.removeChild(svg.firstChild)
