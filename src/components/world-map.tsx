@@ -2,6 +2,8 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3-geo'
 import { feature } from 'topojson-client'
+import type { Topology } from 'topojson-specification'
+import type { FeatureCollection, GeoJsonProperties } from 'geojson'
 
 type Props = {
   stats: Record<string, { pains: number; votes: number }>
@@ -30,20 +32,17 @@ export default function WorldMap({ stats, lang }: Props) {
 
     fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
       .then(r => r.json())
-      .then(world => {
-        const countries = feature(world, world.objects.countries)
+      .then((world: Topology) => {
+        const countries = feature(world, world.objects.countries) as FeatureCollection<d3.GeoPermissibleObjects, GeoJsonProperties>
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
 
-        // Limpiar SVG
         while (svg.firstChild) svg.removeChild(svg.firstChild)
 
-        // Fondo del globo
         const sphere = document.createElementNS('http://www.w3.org/2000/svg', 'path')
         sphere.setAttribute('d', path({ type: 'Sphere' }) || '')
         sphere.setAttribute('fill', isDark ? '#1a1a1f' : '#e8f4f8')
         svg.appendChild(sphere)
 
-        // Graticule (líneas de latitud/longitud)
         const graticule = d3.geoGraticule()()
         const grat = document.createElementNS('http://www.w3.org/2000/svg', 'path')
         grat.setAttribute('d', path(graticule) || '')
@@ -51,9 +50,7 @@ export default function WorldMap({ stats, lang }: Props) {
         grat.setAttribute('stroke', isDark ? '#ffffff08' : '#00000008')
         svg.appendChild(grat)
 
-        // Países
-        countries.features.forEach((feat: any) => {
-          // Convertir numeric id a ISO alpha-2 no es directo — usamos un lookup básico
+        countries.features.forEach((feat) => {
           const el = document.createElementNS('http://www.w3.org/2000/svg', 'path')
           const d = path(feat)
           if (!d) return
@@ -61,21 +58,17 @@ export default function WorldMap({ stats, lang }: Props) {
           el.setAttribute('stroke', isDark ? '#2a2a35' : '#ffffff')
           el.setAttribute('stroke-width', '0.4')
 
-          // Buscar si hay datos para este país
-          // world-atlas usa numeric ISO 3166-1 — necesitamos mapear
-          const numId = String(feat.id).padStart(3, '0')
+          const numId = String((feat as { id?: string | number }).id ?? '').padStart(3, '0')
           const alpha2 = numericToAlpha2[numId]
           const countryData = alpha2 ? stats[alpha2] : null
 
           if (countryData) {
             const intensity = countryData.pains / maxPains
-            // Interpolación de color: base → primary (#e5461c)
             const r = Math.round(229 * intensity + (isDark ? 42 : 200) * (1 - intensity))
             const g = Math.round(70 * intensity + (isDark ? 42 : 220) * (1 - intensity))
             const b = Math.round(28 * intensity + (isDark ? 53 : 235) * (1 - intensity))
             el.setAttribute('fill', `rgb(${r},${g},${b})`)
 
-            // Tooltip
             const title = document.createElementNS('http://www.w3.org/2000/svg', 'title')
             title.textContent = `${alpha2}: ${countryData.pains} ${lang === 'es' ? 'problemas' : 'pains'} · ${countryData.votes} votos`
             el.appendChild(title)
@@ -87,7 +80,6 @@ export default function WorldMap({ stats, lang }: Props) {
         })
       })
       .catch(() => {
-        // Fallback si falla la carga
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
         text.setAttribute('x', '50%')
         text.setAttribute('y', '50%')
@@ -107,7 +99,6 @@ export default function WorldMap({ stats, lang }: Props) {
   )
 }
 
-// Lookup numeric ISO 3166-1 → alpha-2 (países principales)
 const numericToAlpha2: Record<string, string> = {
   '004':'AF','008':'AL','012':'DZ','024':'AO','032':'AR','036':'AU','040':'AT','050':'BD',
   '056':'BE','068':'BO','076':'BR','100':'BG','116':'KH','120':'CM','124':'CA','152':'CL',
@@ -122,5 +113,5 @@ const numericToAlpha2: Record<string, string> = {
   '710':'ZA','724':'ES','144':'LK','729':'SD','752':'SE','756':'CH','760':'SY','762':'TJ',
   '764':'TH','780':'TT','788':'TN','792':'TR','800':'UG','804':'UA','784':'AE','826':'GB',
   '840':'US','858':'UY','860':'UZ','862':'VE','704':'VN','887':'YE','894':'ZM','716':'ZW',
-  '050':'BD','MM':'MM','496':'MN'
+  '496':'MN'
 }
