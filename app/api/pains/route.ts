@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Filter from 'bad-words-es'
 import crypto from 'crypto'
-import { createClient } from '@/utils/supabase/server' // ajusta tu cliente Supabase
-
+import { createClient } from '@/src/lib/supabase/server'
 const filter = new Filter({ languages: ['es', 'en'] })
 
 const extraBlocked = [
