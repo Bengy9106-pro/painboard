@@ -1,0 +1,16 @@
+{
+  "nav": { "trending": "Trending", "submit": "Report a problem", "map": "Map", "founders": "For founders" },
+  "home": {
+    "title": "Real problems from Latin America",
+    "subtitle": "Vote for the problems that affect you most. Help entrepreneurs build real solutions.",
+    "filters": { "all": "All", "trending": "Trending", "recent": "Recent" }
+  },
+  "pain": {
+    "votes": "votes", "vote": "Vote", "voted": "Voted", "solved": "Solved",
+    "title_label": "What is the problem?",
+    "title_placeholder": "E.g: Health insurance takes months to approve medications",
+    "description_label": "More details (optional)",
+    "category_label": "Category", "submit_btn": "Publish problem", "submitting": "Publishing..."
+  },
+  "meta": { "description": "Discover and vote on real problems from Latin America." }
+}

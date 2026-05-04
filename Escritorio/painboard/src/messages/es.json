@@ -1,0 +1,16 @@
+{
+  "nav": { "trending": "Tendencias", "submit": "Reportar problema", "map": "Mapa", "founders": "Para fundadores" },
+  "home": {
+    "title": "Los problemas reales de Latinoamérica",
+    "subtitle": "Vota los problemas que más te afectan. Ayuda a emprendedores a construir soluciones reales.",
+    "filters": { "all": "Todos", "trending": "Tendencias", "recent": "Recientes" }
+  },
+  "pain": {
+    "votes": "votos", "vote": "Votar", "voted": "Votado", "solved": "Resuelto",
+    "title_label": "¿Cuál es el problema?",
+    "title_placeholder": "Ej: Las EPS tardan meses en aprobar medicamentos básicos",
+    "description_label": "Más detalles (opcional)",
+    "category_label": "Categoría", "submit_btn": "Publicar problema", "submitting": "Publicando..."
+  },
+  "meta": { "description": "Descubre y vota los problemas reales de Latinoamérica." }
+}

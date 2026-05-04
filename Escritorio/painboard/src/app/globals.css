@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #f8f7f4;
+  --color-foreground: #1a1916;
+  --color-muted: #f0ede8;
+  --color-border: #e2ddd8;
+  --color-primary: #e5461c;
+  --color-card: #ffffff;
+  --color-primary-foreground: #ffffff;
+  --color-muted-foreground: #7a7870;
+}
+
+@layer base {
+  :root, [data-theme="light"] {
+    --background: #f8f7f4;
+    --foreground: #1a1916;
+    --muted: #f0ede8;
+    --muted-foreground: #7a7870;
+    --border: #e2ddd8;
+    --primary: #e5461c;
+    --primary-foreground: #ffffff;
+    --card: #ffffff;
+  }
+
+  [data-theme="dark"] {
+    --background: #0e0e10;
+    --foreground: #e8e8ed;
+    --muted: #1a1a1f;
+    --muted-foreground: #7a7a8a;
+    --border: #2a2a35;
+    --primary: #ff5a2c;
+    --primary-foreground: #ffffff;
+    --card: #131318;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+      --background: #0e0e10;
+      --foreground: #e8e8ed;
+      --muted: #1a1a1f;
+      --muted-foreground: #7a7a8a;
+      --border: #2a2a35;
+      --primary: #ff5a2c;
+      --primary-foreground: #ffffff;
+      --card: #131318;
+    }
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
+}
